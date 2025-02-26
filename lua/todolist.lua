@@ -29,10 +29,23 @@ local todos = {}
 M.setup = function(opts)
   opts = opts or {}
   options = vim.tbl_deep_extend('force', options, opts)
-  print(vim.inspect(options))
 end
 
-M.parse_lines = function(lines)
+--[[
+-- Create a floating window.
+--]]
+local function create_floating_window(config, enter)
+  if enter == nil then
+    enter = false
+  end
+
+  local buf = vim.api.nvim_create_buf(false, true) -- No file, scratch buffer
+  local win = vim.api.nvim_open_win(buf, enter or false, config)
+
+  return { buf = buf, win = win }
+end
+
+local parse_lines = function(lines)
   for i, line in ipairs(lines) do
     -- match todos lines, beggining with '- [ ]'
     if line:match("^%s*%- %[.%]") then
@@ -44,16 +57,16 @@ M.parse_lines = function(lines)
       local priority, r = rest:match("^%((%d)%)%s*(.-)$")
       rest = r or rest
 
+      -- extract due date
+      local r, due = rest:match("^(.-)%s*due:(.*)%s*")
+      rest = r or rest
+
       -- extract tags
       local tags = {}
       for tag in rest:gmatch("%+([%w:]+)") do
         table.insert(tags, tag)
       end
       local r = rest:match("^(.-)%s*%+")
-      rest = r or rest
-
-      -- extract due date
-      local r, due = rest:match("^(.-)%s*due:(.*)")
       rest = r or rest
 
       -- extract label
@@ -69,11 +82,9 @@ M.parse_lines = function(lines)
       })
     end
   end
-
-  return todos
 end
 
-M.open_todo_file = function()
+local load_todo_file = function()
   -- check if todo file exists
   local file_path = vim.fn.expand(vim.fs.joinpath(vim.fn.getcwd(), options.todo_file))
   if not vim.fn.filereadable(file_path) then
@@ -92,7 +103,45 @@ M.open_todo_file = function()
     table.insert(lines, line)
   end
 
-  return M.parse_lines(lines)
+  parse_lines(lines)
+end
+
+local todos_to_list = function()
+  local list = {}
+
+  -- loop on todos and create a string line to output in the list view
+  for _, todo in ipairs(todos) do
+    local line = string.format("- [ ] %s", todo.label)
+    if todo.priority then
+      line = line .. string.format(" (%d)", todo.priority)
+    end
+    if todo.due then
+      line = line .. string.format(" due:%s", todo.due)
+    end
+    table.insert(list, line)
+  end
+
+  return list
+end
+
+M.open_todolist = function()
+  load_todo_file()
+  print(vim.inspect(todos))
+  local todolist = todos_to_list()
+
+  local width = vim.o.columns
+  local height = vim.o.lines
+  local float = create_floating_window({
+    relative = "editor",
+    width = width,
+    height = height,
+    style = "minimal",
+    border = "rounded",
+    col = 0,
+    row = 0,
+  }, true)
+  vim.bo[float.buf].filetype = "markdown"
+  vim.api.nvim_buf_set_lines(float.buf, 0, -1, false, todolist)
 end
 
 -- print(vim.inspect(M.parse_lines({
@@ -105,5 +154,7 @@ end
 -- })))
 
 -- print(vim.inspect(M.open_todo_file()))
+
+-- M.open_todolist()
 
 return M
