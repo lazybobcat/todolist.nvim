@@ -4,6 +4,16 @@ local M = {}
 ---@field todo_file ?string
 ---@field todo_statuses ?table<string, string>
 
+---@type todolist.Options
+local options = {
+  todo_file = "TODO.md",
+  todo_statuses = {
+    [" "] = "todo",
+    ["-"] = "doing",
+    ["x"] = "done",
+  },
+}
+
 ---@class todolist.Todo
 ---@field line number
 ---@field label string
@@ -12,25 +22,13 @@ local M = {}
 ---@field priority number | nil
 ---@field due string | nil
 
-
----@type todolist.Options
-local options = {
-  todo_file = "TODO.md",
-  todo_statuses = {
-    [" "] = "todo",
-    ["x"] = "done",
-    ["p"] = "postponed",
-    ["d"] = "doing",
-  },
-}
-
 ---@type todolist.Todo[]
 local todos = {}
 
 ---@param opts todolist.Options
 M.setup = function(opts)
   opts = opts or {}
-  -- options = vim.tbl_deep_extend('force', options, opts)
+  options = vim.tbl_deep_extend('force', options, opts)
   print(vim.inspect(options))
 end
 
@@ -48,7 +46,7 @@ M.parse_lines = function(lines)
 
       -- extract tags
       local tags = {}
-      for tag in rest:gmatch("%+(%w+)") do
+      for tag in rest:gmatch("%+([%w:]+)") do
         table.insert(tags, tag)
       end
       local r = rest:match("^(.-)%s*%+")
@@ -75,13 +73,37 @@ M.parse_lines = function(lines)
   return todos
 end
 
-print(vim.inspect(M.parse_lines({
-  "# Todo",
-  "",
-  "- [ ] (1) Task 1",
-  "- [x] Task 2 due:tomorrow",
-  "- [p] Task 3",
-  "- [ ] Task 4 +tag1 +tag2 due:2025-03-15",
-})))
+M.open_todo_file = function()
+  -- check if todo file exists
+  local file_path = vim.fn.expand(vim.fs.joinpath(vim.fn.getcwd(), options.todo_file))
+  if not vim.fn.filereadable(file_path) then
+    -- create file if it doesn't exist
+    local f = io.open(file_path, "w")
+    if not f then
+      error("Error creating file: " .. file_path)
+      return
+    end
+    f:write("# Todo\n")
+    f:close()
+  end
+
+  local lines = {}
+  for line in io.lines(file_path) do
+    table.insert(lines, line)
+  end
+
+  return M.parse_lines(lines)
+end
+
+-- print(vim.inspect(M.parse_lines({
+--   "# Todo",
+--   "",
+--   "- [ ] (1) Task 1",
+--   "- [x] Task 2 due:tomorrow",
+--   "- [p] Task 3",
+--   "- [ ] Task 4 +project:todolist +tag2 due:2025-03-15",
+-- })))
+
+-- print(vim.inspect(M.open_todo_file()))
 
 return M
